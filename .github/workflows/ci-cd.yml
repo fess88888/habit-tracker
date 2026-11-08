@@ -1,0 +1,53 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ develop ]
+  pull_request:
+    branches: [ develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt coverage flake8
+      - name: Lint
+        run: flake8 . --exclude=__pycache__,.venv,venv,migrations
+      - name: Tests + coverage
+        run: |
+          coverage run --source='.' manage.py test
+          coverage report -m
+        env:
+          DJANGO_SETTINGS_MODULE: habit_tracker.settings
+          CI: 'true'
+          SECRET_KEY: 'ci-only-test-key'
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images
+        run: docker compose build
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /var/www/habit-tracker
+            git pull origin develop
+            docker compose up -d --build
+            docker compose exec -T web python manage.py migrate --noinput
+            docker compose exec -T web python manage.py collectstatic --noinput
