@@ -70,7 +70,6 @@ class HabitAPITest(TestCase):
 
         self.assertEqual(response.status_code, 201, f"Ошибка создания: {response.data}")
 
-        # Проверяем, что у пользователя теперь 2 привычки
         count = Habit.objects.filter(user=self.user).count()
         self.assertEqual(count, 2)
 
@@ -78,20 +77,19 @@ class HabitAPITest(TestCase):
         self.assertEqual(created_habit['action'], 'Read 10 pages')
 
     def test_validation_error_reward_and_related(self):
-        """Тест, который проверяет, что твоя кастомная валидация работает"""
+        """Проверяем, что нельзя одновременно указать reward и related_habit"""
         data = {
+            'user': self.user,
             'action': 'Bad habit pattern',
-            'time_of_day': '12:00:00',
+            'time_of_day': datetime.time(12, 0),
             'periodicity_days': 1,
             'execution_time_seconds': 30,
-            'reward': 'Ice cream',  # нарушает правило, если есть related_habit
-            'related_habit': self.habit.id  # нарушает правило: нельзя и то, и другое
+            'reward': 'Ice cream',
+            'related_habit': self.habit,
         }
-        # Примечание: этот тест может упасть с 400 ошибкой, если ты правильно настроил сериализатор
-        # на обработку ValidationError. Если сериализатор просто кидает 500 — оставь этот тест закомментированным.
-        # response = self.client.post('/api/habits/', data, format='json')
-        # self.assertEqual(response.status_code, 400)
-        pass
+        with self.assertRaises(ValidationError):
+            habit = Habit(**data)
+            habit.full_clean()
 
     def test_clean_execution_time_limit(self):
         habit = Habit(
